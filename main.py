@@ -130,24 +130,32 @@ def check_deadlines(rows):
         deadline_str = row[4] if len(row) > 4 else ""   # E列: 期限
         status       = row[5] if len(row) > 5 else ""   # F列: ステータス
 
-        if not task_name or not deadline_str:
+        if not task_name:
             continue
 
         # 完了済みはスキップ
         if status == "完了":
             continue
 
-        deadline = parse_deadline(deadline_str)
-        if not deadline:
-            continue
-
-        days_left = (deadline - today).days
-        if days_left <= ALERT_DAYS:  # 3日以内 or 期限切れ
+        if deadline_str:
+            deadline = parse_deadline(deadline_str)
+            if deadline:
+                days_left = (deadline - today).days
+                if days_left > ALERT_DAYS:
+                    continue  # 期限まで余裕あり、スキップ
+                alerts.append({
+                    "task":      task_name,
+                    "assignee":  assignee or "未設定",
+                    "deadline":  deadline.strftime("%Y/%m/%d"),
+                    "days_left": days_left,
+                })
+        else:
+            # 期限なしの未完了タスク
             alerts.append({
                 "task":      task_name,
                 "assignee":  assignee or "未設定",
-                "deadline":  deadline.strftime("%Y/%m/%d"),
-                "days_left": days_left,
+                "deadline":  "",
+                "days_left": None,
             })
 
     return alerts
@@ -163,23 +171,31 @@ def build_message(alerts):
     today = datetime.now(JST).strftime("%Y/%m/%d")
     lines = [f"小林からのタスク依頼リスト　期限リマインド！（{today}）"]
 
-    # 担当者ごとにグループ化（登場順を保持）
+    # 担当者ごとにグループ化（期限あり→期限なし の順でソート）
     by_assignee = {}
-    for a in sorted(alerts, key=lambda x: x["days_left"]):
+    for a in sorted(alerts, key=lambda x: (x["days_left"] is None, x["days_left"] or 0)):
         name = a["assignee"]
         by_assignee.setdefault(name, []).append(a)
 
     for assignee, tasks in by_assignee.items():
         lines.append(f"\n【{assignee}】")
         for a in tasks:
-            if a["days_left"] < 0:
+            if a["days_left"] is None:
+                label = "📌 期限なし"
+                lines.append(f"・{a['task']}")
+                lines.append(f"　（{label}）")
+            elif a["days_left"] < 0:
                 label = f"🔴 {abs(a['days_left'])}日超過"
+                lines.append(f"・{a['task']}")
+                lines.append(f"　{a['deadline']}（{label}）")
             elif a["days_left"] == 0:
                 label = "⚠️ 今日"
+                lines.append(f"・{a['task']}")
+                lines.append(f"　{a['deadline']}（{label}）")
             else:
                 label = f"⚠️ あと{a['days_left']}日"
-            lines.append(f"・{a['task']}")
-            lines.append(f"　{a['deadline']}（{label}）")
+                lines.append(f"・{a['task']}")
+                lines.append(f"　{a['deadline']}（{label}）")
 
     lines.append(f"\n【小林からのタスク依頼】\n{SHEET_URL}\n\n※スプレッドシートにコメントできます、ステータス変更やマイルストーンなど、変更希望あればコメントお願いします。")
     return "\n".join(lines)
