@@ -125,17 +125,16 @@ def check_deadlines(rows):
         if len(row) < 6:
             continue
 
-        task_name    = row[1] if len(row) > 1 else ""   # B列: やること
+        task_name    = row[0] if len(row) > 0 else ""   # A列: タスク
         assignee     = row[2] if len(row) > 2 else ""   # C列: 担当者
-        deadline_str = row[5] if len(row) > 5 else ""   # F列: 期限
-        status       = row[7] if len(row) > 7 else ""   # H列: ステータス
-        completed    = row[9] if len(row) > 9 else ""   # J列: 完成
+        deadline_str = row[4] if len(row) > 4 else ""   # E列: 期限
+        status       = row[5] if len(row) > 5 else ""   # F列: ステータス
 
         if not task_name or not deadline_str:
             continue
 
         # 完了済みはスキップ
-        if "完了" in status or completed.strip() == "TRUE":
+        if status == "完了":
             continue
 
         deadline = parse_deadline(deadline_str)
@@ -195,10 +194,6 @@ def main():
 
     rows = get_sheet_data()
     print(f"取得行数: {len(rows)}")
-
-    # デバッグ: ヘッダー行と最初の2行の全列を表示
-    for i, row in enumerate(rows[:3]):
-        print(f"[DEBUG行{i}] {row}")
 
     alerts = check_deadlines(rows)
     print(f"アラート対象: {len(alerts)}件")
