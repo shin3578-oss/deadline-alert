@@ -1,0 +1,30 @@
+name: やることリスト 期限アラート
+
+on:
+  schedule:
+    - cron: '0 23 * * *'  # 毎日 8:00 JST (= 23:00 UTC)
+  workflow_dispatch:        # 手動実行も可能
+
+jobs:
+  run-alert:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Python をセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 必要パッケージをインストール
+        run: pip install -r requirements.txt
+
+      - name: 期限アラートを実行
+        env:
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+          LW_PRIVATE_KEY:          ${{ secrets.LW_PRIVATE_KEY }}
+          LW_TARGET:               ${{ secrets.LW_TARGET }}
+          LW_TARGET_TYPE:          ${{ secrets.LW_TARGET_TYPE }}
+        run: python main.py
