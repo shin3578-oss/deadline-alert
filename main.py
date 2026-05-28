@@ -157,9 +157,11 @@ def check_deadlines(rows):
 # メッセージ組み立て
 # ========================
 
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1tXsGbPoJjQ65Xh3pJZwCZikeaUL_WDt5xNaMUug_wEs/edit?gid=1576278866#gid=1576278866"
+
 def build_message(alerts):
     today = datetime.now(JST).strftime("%Y/%m/%d")
-    lines = [f"📋 タスク期限アラート（{today}）"]
+    lines = [f"小林からのタスク依頼リスト　期限リマインド！（{today}）"]
 
     # 担当者ごとにグループ化（登場順を保持）
     by_assignee = {}
@@ -179,6 +181,7 @@ def build_message(alerts):
             lines.append(f"・{a['task']}")
             lines.append(f"　{a['deadline']}（{label}）")
 
+    lines.append(f"\n【小林からのタスク依頼】\n{SHEET_URL}\n\n※スプレッドシートにコメントできます、ステータス変更など、コメントお願いします")
     return "\n".join(lines)
 
 
