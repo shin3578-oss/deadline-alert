@@ -134,17 +134,12 @@ def check_deadlines(rows):
         if not task_name or not deadline_str:
             continue
 
-        # デバッグ: 最初の5件だけ中身を表示
-        if i <= 5:
-            print(f"[DEBUG行{i}] タスク={task_name!r} 期限={deadline_str!r} ステータス={status!r} 完成={completed!r}")
-
         # 完了済みはスキップ
         if "完了" in status or completed.strip() == "TRUE":
             continue
 
         deadline = parse_deadline(deadline_str)
         if not deadline:
-            print(f"[DEBUG] 日付パース失敗: {deadline_str!r}")
             continue
 
         days_left = (deadline - today).days
@@ -200,6 +195,10 @@ def main():
 
     rows = get_sheet_data()
     print(f"取得行数: {len(rows)}")
+
+    # デバッグ: ヘッダー行と最初の2行の全列を表示
+    for i, row in enumerate(rows[:3]):
+        print(f"[DEBUG行{i}] {row}")
 
     alerts = check_deadlines(rows)
     print(f"アラート対象: {len(alerts)}件")
