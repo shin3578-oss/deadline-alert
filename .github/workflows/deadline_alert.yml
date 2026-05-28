@@ -6,9 +6,9 @@ on:
   workflow_dispatch:        # 手動実行も可能
     inputs:
       alert_days:
-        description: '何日以内をアラート対象にするか（省略時は3日）'
+        description: '何日以内をアラート対象にするか（省略時は7日）'
         required: false
-        default: '3'
+        default: '7'
 
 jobs:
   run-alert:
