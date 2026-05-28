@@ -197,7 +197,7 @@ def build_message(alerts):
                 lines.append(f"・{a['task']}")
                 lines.append(f"　{a['deadline']}（{label}）")
 
-    lines.append(f"\n【小林からのタスク依頼】\n{SHEET_URL}\n\n※スプレッドシートにコメントできます、ステータス変更やマイルストーンなど、変更希望あればコメントお願いします。")
+    lines.append(f"\n【小林からのタスク依頼】\n{SHEET_URL}\n\n※スプレッドシートにコメントできます、ステータス変更や完了報告、マイルストーン記入など、変更希望あればコメントお願いします。🙌")
     return "\n".join(lines)
 
 
