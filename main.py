@@ -5,7 +5,7 @@
 3日以内に期限が来るタスク（期限切れ含む）をLINEワークスに通知
 """
 
-import json, os, time
+import json, os, time, random
 import jwt as pyjwt
 import requests
 from datetime import datetime, timezone, timedelta
@@ -167,6 +167,19 @@ def check_deadlines(rows):
 
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1tXsGbPoJjQ65Xh3pJZwCZikeaUL_WDt5xNaMUug_wEs/edit?gid=1576278866#gid=1576278866"
 
+KAOMOJI_LIST = [
+    "(´∀｀*)ﾉ",
+    "(＾▽＾)/",
+    "(*´ω｀*)",
+    "ヽ(´▽`)/",
+    "(o^^o)",
+    "(＊˘︶˘＊)",
+    "(*´∀｀*)",
+    "٩(ˊᗜˋ*)و",
+    "(≧▽≦)/",
+    "(*^▽^*)",
+]
+
 def build_message(alerts):
     today = datetime.now(JST).strftime("%Y/%m/%d")
     lines = [f"小林からのタスク依頼リスト　期限リマインド！（{today}）"]
@@ -197,7 +210,8 @@ def build_message(alerts):
                 lines.append(f"・{a['task']}")
                 lines.append(f"　{a['deadline']}（{label}）")
 
-    lines.append(f"\n【小林からのタスク依頼】\n{SHEET_URL}\n\n※スプレッドシートにコメントできます、ステータス変更や完了報告、マイルストーン記入など、変更希望あればコメントお願いします (´∀｀*)ﾉ")
+    kaomoji = random.choice(KAOMOJI_LIST)
+    lines.append(f"\n【小林からのタスク依頼】\n{SHEET_URL}\n\n※スプレッドシートにコメントできます、ステータス変更や完了報告、マイルストーン記入など、変更希望あればコメントお願いします {kaomoji}")
     return "\n".join(lines)
 
 
