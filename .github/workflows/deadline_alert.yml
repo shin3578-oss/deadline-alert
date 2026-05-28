@@ -2,7 +2,7 @@ name: やることリスト 期限アラート
 
 on:
   schedule:
-    - cron: '0 23 * * *'  # 毎日 8:00 JST (= 23:00 UTC)
+    - cron: '9 23 * * *'  # 毎日 8:09 JST (= 23:09 UTC)
   workflow_dispatch:        # 手動実行も可能
     inputs:
       alert_days:
