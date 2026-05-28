@@ -159,29 +159,27 @@ def check_deadlines(rows):
 
 def build_message(alerts):
     today = datetime.now(JST).strftime("%Y/%m/%d")
-    lines = [f"📋 タスク期限アラート（{today}）\n"]
+    lines = [f"📋 タスク期限アラート（{today}）"]
 
-    overdue  = sorted([a for a in alerts if a["days_left"] < 0],  key=lambda x: x["days_left"])
-    upcoming = sorted([a for a in alerts if a["days_left"] >= 0], key=lambda x: x["days_left"])
+    # 担当者ごとにグループ化（登場順を保持）
+    by_assignee = {}
+    for a in sorted(alerts, key=lambda x: x["days_left"]):
+        name = a["assignee"]
+        by_assignee.setdefault(name, []).append(a)
 
-    if overdue:
-        lines.append("🔴 期限切れ")
-        for a in overdue:
-            lines.append(f"・担当：{a['assignee']}")
-            lines.append(f"　{a['task']}")
-            lines.append(f"　期限：{a['deadline']}（{abs(a['days_left'])}日超過）")
-            lines.append("")
+    for assignee, tasks in by_assignee.items():
+        lines.append(f"\n【{assignee}】")
+        for a in tasks:
+            if a["days_left"] < 0:
+                label = f"🔴 {abs(a['days_left'])}日超過"
+            elif a["days_left"] == 0:
+                label = "⚠️ 今日"
+            else:
+                label = f"⚠️ あと{a['days_left']}日"
+            lines.append(f"・{a['task']}")
+            lines.append(f"　{a['deadline']}（{label}）")
 
-    if upcoming:
-        lines.append("⚠️ 3日以内に期限")
-        for a in upcoming:
-            day_label = "今日" if a["days_left"] == 0 else f"あと{a['days_left']}日"
-            lines.append(f"・担当：{a['assignee']}")
-            lines.append(f"　{a['task']}")
-            lines.append(f"　期限：{a['deadline']}（{day_label}）")
-            lines.append("")
-
-    return "\n".join(lines).rstrip()
+    return "\n".join(lines)
 
 
 # ========================
