@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '0 23 * * *'  # 毎日 8:00 JST (= 23:00 UTC)
   workflow_dispatch:        # 手動実行も可能
+    inputs:
+      alert_days:
+        description: '何日以内をアラート対象にするか（省略時は3日）'
+        required: false
+        default: '3'
 
 jobs:
   run-alert:
@@ -27,4 +32,5 @@ jobs:
           LW_PRIVATE_KEY:          ${{ secrets.LW_PRIVATE_KEY }}
           LW_TARGET:               ${{ secrets.LW_TARGET }}
           LW_TARGET_TYPE:          ${{ secrets.LW_TARGET_TYPE }}
+          ALERT_DAYS:              ${{ github.event.inputs.alert_days || '3' }}
         run: python main.py

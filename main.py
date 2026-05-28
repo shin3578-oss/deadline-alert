@@ -16,7 +16,7 @@ JST = timezone(timedelta(hours=9))
 
 SPREADSHEET_ID = "1tXsGbPoJjQ65Xh3pJZwCZikeaUL_WDt5xNaMUug_wEs"
 SHEET_GID      = 1576278866
-ALERT_DAYS     = 3
+ALERT_DAYS     = int(os.environ.get("ALERT_DAYS", "3"))
 
 GOOGLE_CREDS       = os.environ["GOOGLE_CREDENTIALS_JSON"]
 LW_CLIENT_ID       = "0cAEPO2Yzau80tSsEhxV"
