@@ -1,9 +1,7 @@
 name: やることリスト 期限アラート
 
 on:
-  schedule:
-    - cron: '9 23 * * *'  # 毎日 8:09 JST (= 23:09 UTC)
-  workflow_dispatch:        # 手動実行も可能
+  workflow_dispatch:        # Cron-job.org から GitHub API 経由で起動（毎週月曜 8:09 JST）
     inputs:
       alert_days:
         description: '何日以内をアラート対象にするか（省略時は7日）'
