@@ -54,6 +54,25 @@ def get_lw_access_token():
     return r.json()["access_token"]
 
 
+def split_message(message, limit=1900):
+    """2,000文字制限に合わせて行単位で分割する"""
+    chunks = []
+    current = []
+    current_len = 0
+    for line in message.split("\n"):
+        line_len = len(line) + 1  # +1 は改行分
+        if current_len + line_len > limit and current:
+            chunks.append("\n".join(current))
+            current = [line]
+            current_len = line_len
+        else:
+            current.append(line)
+            current_len += line_len
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
+
+
 def send_to_lineworks(message):
     access_token = get_lw_access_token()
     headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
@@ -63,11 +82,16 @@ def send_to_lineworks(message):
     else:
         url = f"https://www.worksapis.com/v1.0/bots/{LW_BOT_ID}/channels/{LW_TARGET}/messages"
 
-    r = requests.post(url, headers=headers,
-                      json={"content": {"type": "text", "text": message}},
-                      timeout=30)
-    r.raise_for_status()
-    print(f"LINE WORKS送信完了 → {LW_TARGET_TYPE}:{LW_TARGET}")
+    chunks = split_message(message)
+    print(f"送信分割数: {len(chunks)}通")
+    for i, chunk in enumerate(chunks, 1):
+        r = requests.post(url, headers=headers,
+                          json={"content": {"type": "text", "text": chunk}},
+                          timeout=30)
+        r.raise_for_status()
+        print(f"LINE WORKS送信完了 ({i}/{len(chunks)}) → {LW_TARGET_TYPE}:{LW_TARGET}")
+        if len(chunks) > 1:
+            time.sleep(1)  # 連続送信の間隔
 
 
 # ========================
