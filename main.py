@@ -6,10 +6,12 @@
 """
 
 import json, os, time, random
+import httplib2
 import jwt as pyjwt
 import requests
 from datetime import datetime, timezone, timedelta
 from google.oauth2 import service_account
+from google_auth_httplib2 import AuthorizedHttp
 from googleapiclient.discovery import build
 
 JST = timezone(timedelta(hours=9))
@@ -103,7 +105,8 @@ def get_sheet_data():
         json.loads(GOOGLE_CREDS),
         scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
     )
-    service = build("sheets", "v4", credentials=creds)
+    authorized_http = AuthorizedHttp(creds, http=httplib2.Http(timeout=30))
+    service = build("sheets", "v4", http=authorized_http)
 
     # GID からシート名を取得
     spreadsheet = service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
@@ -251,7 +254,15 @@ def main():
     now_jst = datetime.now(JST)
     print(f"期限アラートBot 開始: {now_jst.strftime('%Y-%m-%d %H:%M:%S')} JST")
 
-    rows = get_sheet_data()
+    for attempt in range(3):
+        try:
+            rows = get_sheet_data()
+            break
+        except Exception as e:
+            print(f"スプレッドシート取得失敗 ({attempt+1}/3): {e}")
+            if attempt == 2:
+                raise
+            time.sleep(10)
     print(f"取得行数: {len(rows)}")
 
     alerts = check_deadlines(rows)
