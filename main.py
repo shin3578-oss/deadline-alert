@@ -168,8 +168,6 @@ def check_deadlines(rows):
             deadline = parse_deadline(deadline_str)
             if deadline:
                 days_left = (deadline - today).days
-                if days_left > ALERT_DAYS:
-                    continue  # 期限まで余裕あり、スキップ
                 alerts.append({
                     "task":      task_name,
                     "assignee":  assignee or "未設定",
@@ -177,7 +175,6 @@ def check_deadlines(rows):
                     "days_left": days_left,
                 })
         else:
-            # 期限なしの未完了タスク
             alerts.append({
                 "task":      task_name,
                 "assignee":  assignee or "未設定",
@@ -213,7 +210,7 @@ KAOMOJI_LIST = [
 
 def build_message(alerts):
     today = datetime.now(JST).strftime("%Y/%m/%d")
-    lines = [f"小林からのタスク依頼リスト　期限リマインド！（{today}）"]
+    lines = [f"小林からのタスク依頼リスト　未完了タスク一覧（{today}）"]
 
     # 担当者ごとにグループ化（期限あり→期限なし の順でソート）
     by_assignee = {}
