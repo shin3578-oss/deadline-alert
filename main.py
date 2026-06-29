@@ -25,10 +25,11 @@ LW_CLIENT_ID       = "0cAEPO2Yzau80tSsEhxV"
 LW_CLIENT_SECRET   = "d7WfxxO2t1"
 LW_SERVICE_ACCOUNT = "3w266.serviceaccount@ovalcourtdental"
 LW_BOT_ID          = "12266491"
-LW_PRIVATE_KEY     = os.environ["LW_PRIVATE_KEY"]
+LW_PRIVATE_KEY     = os.environ.get("LW_PRIVATE_KEY", "")
 # テスト: "shin@ovalcourtdental"（個人宛）、本番: チャンネルID
 LW_TARGET      = os.environ.get("LW_TARGET", "shin@ovalcourtdental")
 LW_TARGET_TYPE = os.environ.get("LW_TARGET_TYPE", "user")  # "user" or "channel"
+DRY_RUN        = os.environ.get("DRY_RUN", "false").lower() == "true"
 
 
 # ========================
@@ -149,7 +150,7 @@ def check_deadlines(rows):
     for i, row in enumerate(rows):
         if i == 0:  # ヘッダー行スキップ
             continue
-        if len(row) < 6:
+        if not row or not row[0].strip():
             continue
 
         task_name    = row[0] if len(row) > 0 else ""   # A列: タスク
@@ -271,6 +272,10 @@ def main():
 
     message = build_message(alerts)
     print(f"送信メッセージ:\n{message}")
+
+    if DRY_RUN:
+        print("[DRY_RUN] LINEワークス送信をスキップしました")
+        return
 
     send_to_lineworks(message)
 

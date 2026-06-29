@@ -7,6 +7,10 @@ on:
         description: '何日以内をアラート対象にするか（省略時は7日）'
         required: false
         default: '7'
+      dry_run:
+        description: 'trueにするとLW送信せずログに出力のみ'
+        required: false
+        default: 'false'
 
 jobs:
   run-alert:
@@ -31,4 +35,5 @@ jobs:
           LW_TARGET:               ${{ secrets.LW_TARGET }}
           LW_TARGET_TYPE:          ${{ secrets.LW_TARGET_TYPE }}
           ALERT_DAYS:              ${{ github.event.inputs.alert_days || '3' }}
+          DRY_RUN:                 ${{ github.event.inputs.dry_run || 'false' }}
         run: python main.py
