@@ -175,6 +175,14 @@ def check_deadlines(rows):
                     "deadline":  deadline.strftime("%Y/%m/%d"),
                     "days_left": days_left,
                 })
+            else:
+                # 期限の書式が読めない行を黙って落とさない（期限なし扱いで一覧に載せる）
+                alerts.append({
+                    "task":      f"{task_name}（⚠️期限『{deadline_str.strip()}』が読み取れません）",
+                    "assignee":  assignee or "未設定",
+                    "deadline":  "",
+                    "days_left": None,
+                })
         else:
             alerts.append({
                 "task":      task_name,
