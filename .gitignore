@@ -1,0 +1,17 @@
+# 認証情報・トークン類（絶対にコミットしない）
+*.pem
+*.key
+*token*.json
+*secret*.json
+*credential*.json
+client_secrets.json
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+
+# ログ・一時ファイル
+*.log
+*.zip
