@@ -5,12 +5,14 @@
 3日以内に期限が来るタスク（期限切れ含む）をLINEワークスに通知
 """
 
+import asyncio
 import json, os, time, random
 import httplib2
-import jpholiday
 import jwt as pyjwt
 import requests
 from datetime import datetime, timezone, timedelta
+
+from clinic_calendar import clinic_closed_reason, apotool_closed_reason_standalone
 from google.oauth2 import service_account
 from google_auth_httplib2 import AuthorizedHttp
 from googleapiclient.discovery import build
@@ -257,26 +259,21 @@ def build_message(alerts):
 # Main
 # ========================
 
-def clinic_closed_reason(d):
-    """休診日（日曜・祝日）なら理由文字列、診療日なら None を返す。
-
-    医院は月〜土 診療・日曜＋祝日 休診。祝日は jpholiday で判定（振替休日含む）。
-    お盆・年末年始・臨時休診など「祝日でない休診日」は拾えない（既知の限界）。
-    """
-    if d.weekday() == 6:  # 6=日曜
-        return "日曜（定休）"
-    name = jpholiday.is_holiday_name(d)
-    if name:
-        return f"祝日（{name}）"
-    return None
-
-
 def main():
     now_jst = datetime.now(JST)
     print(f"期限アラートBot 開始: {now_jst.strftime('%Y-%m-%d %H:%M:%S')} JST")
 
-    # ── 休診日（日曜・祝日）は配信しない ──
+    # ── 休診日は配信しない ──
+    # ① 日曜・祝日（jpholiday／ログイン不要で即判定）
     closed_reason = clinic_closed_reason(now_jst.date())
+    # ② アポツールのシフト rest-all（お盆・年末年始・臨時休診など祝日でない休診日）
+    #    ※ 2026年お盆は8/10-14で8/10が月曜＝起動日。祝日判定だけでは拾えないため必須。
+    #    ベストエフォート：失敗しても①の結果で続行（アポツール未接続でも祝日は止まる）
+    if not closed_reason:
+        try:
+            closed_reason = asyncio.run(apotool_closed_reason_standalone(now_jst.date()))
+        except Exception as e:
+            print(f"[休診チェック] アポツール休診判定に失敗（続行）: {e}")
     if closed_reason:
         print(f"本日は{closed_reason} → 休診日のため配信をスキップします")
         return

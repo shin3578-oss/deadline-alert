@@ -32,12 +32,17 @@ jobs:
       - name: 必要パッケージをインストール
         run: pip install -r requirements.txt
 
+      - name: Playwright ブラウザをインストール（休診日判定でアポツールを開くため）
+        run: playwright install chromium --with-deps
+
       - name: 期限アラートを実行
         env:
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
           LW_PRIVATE_KEY:          ${{ secrets.LW_PRIVATE_KEY }}
           LW_TARGET:               ${{ secrets.LW_TARGET }}
           LW_TARGET_TYPE:          ${{ secrets.LW_TARGET_TYPE }}
+          APOTOOL_EMAIL:           ${{ secrets.APOTOOL_EMAIL }}
+          APOTOOL_PASSWORD:        ${{ secrets.APOTOOL_PASSWORD }}
           ALERT_DAYS:              ${{ github.event.inputs.alert_days || '3' }}
           DRY_RUN:                 ${{ github.event.inputs.dry_run || 'false' }}
         run: python main.py
