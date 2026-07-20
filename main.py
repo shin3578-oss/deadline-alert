@@ -7,6 +7,7 @@
 
 import json, os, time, random
 import httplib2
+import jpholiday
 import jwt as pyjwt
 import requests
 from datetime import datetime, timezone, timedelta
@@ -256,9 +257,29 @@ def build_message(alerts):
 # Main
 # ========================
 
+def clinic_closed_reason(d):
+    """休診日（日曜・祝日）なら理由文字列、診療日なら None を返す。
+
+    医院は月〜土 診療・日曜＋祝日 休診。祝日は jpholiday で判定（振替休日含む）。
+    お盆・年末年始・臨時休診など「祝日でない休診日」は拾えない（既知の限界）。
+    """
+    if d.weekday() == 6:  # 6=日曜
+        return "日曜（定休）"
+    name = jpholiday.is_holiday_name(d)
+    if name:
+        return f"祝日（{name}）"
+    return None
+
+
 def main():
     now_jst = datetime.now(JST)
     print(f"期限アラートBot 開始: {now_jst.strftime('%Y-%m-%d %H:%M:%S')} JST")
+
+    # ── 休診日（日曜・祝日）は配信しない ──
+    closed_reason = clinic_closed_reason(now_jst.date())
+    if closed_reason:
+        print(f"本日は{closed_reason} → 休診日のため配信をスキップします")
+        return
 
     for attempt in range(3):
         try:
