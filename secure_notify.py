@@ -33,21 +33,32 @@ def get_token():
     return token
 
 
-def send(message):
+def send(message, users):
     token = get_token()
-    for i in range(0, len(message), 1800):
-        r = requests.post(
-            f"https://www.worksapis.com/v1.0/bots/{BOT_ID}/users/{USER_ID}/messages",
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-            json={"content": {"type": "text", "text": message[i:i+1800]}})
-        # 本文はログに出さない（患者名を含むため）
-        print("送信:", r.status_code)
-        if r.status_code >= 300:
-            raise SystemExit(f"送信失敗: {r.status_code} {r.text[:200]}")
+    for uid in users:
+        for i in range(0, len(message), 1800):
+            r = requests.post(
+                f"https://www.worksapis.com/v1.0/bots/{BOT_ID}/users/{uid}/messages",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={"content": {"type": "text", "text": message[i:i+1800]}})
+            # 本文・宛先はログに出さない（患者名等を含むため）
+            print("送信:", r.status_code)
+            if r.status_code >= 300:
+                raise SystemExit(f"送信失敗: {r.status_code} {r.text[:200]}")
 
 
 if __name__ == "__main__":
     payload = os.environ["ENCRYPTED_PAYLOAD"]
-    message = Fernet(os.environ["NOTIFY_ENC_KEY"].encode()).decrypt(payload.encode()).decode("utf-8")
-    send(message)
+    plain = Fernet(os.environ["NOTIFY_ENC_KEY"].encode()).decrypt(payload.encode()).decode("utf-8")
+    # JSON形式 {"users": [...], "text": "..."} なら宛先込み。素のテキストなら院長DMのみ
+    users, message = [USER_ID], plain
+    try:
+        import json
+        obj = json.loads(plain)
+        if isinstance(obj, dict) and "text" in obj:
+            message = obj["text"]
+            users = obj.get("users") or [USER_ID]
+    except ValueError:
+        pass
+    send(message, users)
     print("完了")
