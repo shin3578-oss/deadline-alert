@@ -1,0 +1,33 @@
+# ==========================================================
+# 【何をする】GitHub Actions課金ブロック中（2026-07-27〜31）の手動実行リマインドを院長DMへ送る
+# 【いつ動く】cybozu-bot（30分ごと・公開リポジトリで無料稼働中）から毎日 7:00／19:00 JST に呼ばれる
+# 【8月1日以降】無料枠リセットで不要になるので、このワークフローと reminder.py は削除する
+# ==========================================================
+name: 手動実行リマインド（課金ブロック中の臨時）
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'morning=その日の一覧／evening=アポツール直前'
+        required: false
+        default: 'morning'
+        type: choice
+        options:
+          - 'morning'
+          - 'evening'
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests "PyJWT[crypto]"
+      - run: python reminder.py
+        env:
+          LW_PRIVATE_KEY: ${{ secrets.LW_PRIVATE_KEY }}
+          LW_CLIENT_SECRET: ${{ secrets.LW_CLIENT_SECRET }}
+          REMINDER_MODE: ${{ inputs.mode }}
