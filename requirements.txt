@@ -4,4 +4,3 @@ cryptography
 google-api-python-client
 google-auth
 jpholiday
-playwright

@@ -1,11 +1,21 @@
 # ==========================================================
 # 【何をする】やることリストの期限が近い項目をLINEワークスに通知
-# 【いつ動く】毎週月曜 8:09｜Cron-job.org「期限アラートBot」ジョブが起動
+# 【いつ動く】週1回。原則 月曜 8:09（Cron-job.org「期限アラートBot」ジョブが起動）。
+#            月曜が休診（祝日・お盆・年末年始・臨時休診）のときは配信せず、
+#            その週の**最初の診療日**に繰り越して1回だけ送る。
+#            繰り越し用の起動は火〜土 7:30 に apotool の「朝の起動ハブ」から来る
+#            （新しいcronは作らない。Cron-job.orgは12件で満杯のため）。
+#            送るかどうかは main.py が公開の休診日カレンダーを見て自分で決めるので、
+#            起動が重なっても二重送信にはならない。
+# 【休診日判定】https://shin3578-oss.github.io/kds-dashboard/closed_days.json
+#            （アポツールの rest-all を apotool-automation が毎日書き出したもの）
+#            2026-08-12まではアポツールへ毎回ログインしていたが、公開カレンダーを
+#            読むだけにしてブラウザ起動をやめた（実行時間 約1分短縮）。
 # ==========================================================
 name: やることリスト 期限アラート
 
 on:
-  workflow_dispatch:        # Cron-job.org から GitHub API 経由で起動（毎週月曜 8:09 JST）
+  workflow_dispatch:        # Cron-job.org / 朝の起動ハブ から GitHub API 経由で起動
     inputs:
       alert_days:
         description: '何日以内をアラート対象にするか（省略時は7日）'
@@ -13,6 +23,10 @@ on:
         default: '7'
       dry_run:
         description: 'trueにするとLW送信せずログに出力のみ'
+        required: false
+        default: 'false'
+      force_send:
+        description: 'trueにすると「今週の最初の診療日だけ送る」の縛りを外して今すぐ送る（手動確認用）'
         required: false
         default: 'false'
 
@@ -32,17 +46,13 @@ jobs:
       - name: 必要パッケージをインストール
         run: pip install -r requirements.txt
 
-      - name: Playwright ブラウザをインストール（休診日判定でアポツールを開くため）
-        run: playwright install chromium --with-deps
-
       - name: 期限アラートを実行
         env:
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
           LW_PRIVATE_KEY:          ${{ secrets.LW_PRIVATE_KEY }}
           LW_TARGET:               ${{ secrets.LW_TARGET }}
           LW_TARGET_TYPE:          ${{ secrets.LW_TARGET_TYPE }}
-          APOTOOL_EMAIL:           ${{ secrets.APOTOOL_EMAIL }}
-          APOTOOL_PASSWORD:        ${{ secrets.APOTOOL_PASSWORD }}
           ALERT_DAYS:              ${{ github.event.inputs.alert_days || '3' }}
           DRY_RUN:                 ${{ github.event.inputs.dry_run || 'false' }}
+          FORCE_SEND:              ${{ github.event.inputs.force_send || 'false' }}
         run: python main.py

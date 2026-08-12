@@ -1,18 +1,17 @@
 # -*- coding: utf-8 -*-
 """
 やることリスト 期限アラートBot
-毎朝8:00 JST に実行
-3日以内に期限が来るタスク（期限切れ含む）をLINEワークスに通知
+毎週1回（原則 月曜。月曜が休診なら**その週の最初の診療日**に繰り越す）
+期限が近いタスク（期限切れ含む）をLINEワークスに通知
 """
 
-import asyncio
 import json, os, time, random
 import httplib2
 import jwt as pyjwt
 import requests
 from datetime import datetime, timezone, timedelta
 
-from clinic_calendar import clinic_closed_reason, apotool_closed_reason_standalone
+from clinic_calendar import closed_reason, is_first_open_day_of_week
 from google.oauth2 import service_account
 from google_auth_httplib2 import AuthorizedHttp
 from googleapiclient.discovery import build
@@ -33,6 +32,8 @@ LW_PRIVATE_KEY     = os.environ.get("LW_PRIVATE_KEY", "")
 LW_TARGET      = os.environ.get("LW_TARGET", "shin@ovalcourtdental")
 LW_TARGET_TYPE = os.environ.get("LW_TARGET_TYPE", "user")  # "user" or "channel"
 DRY_RUN        = os.environ.get("DRY_RUN", "false").lower() == "true"
+# 週1回の縛り（今週の最初の診療日だけ送る）を外して今すぐ送る＝手動確認用
+FORCE_SEND     = os.environ.get("FORCE_SEND", "false").lower() == "true"
 
 
 # ========================
@@ -263,20 +264,23 @@ def main():
     now_jst = datetime.now(JST)
     print(f"期限アラートBot 開始: {now_jst.strftime('%Y-%m-%d %H:%M:%S')} JST")
 
-    # ── 休診日は配信しない ──
-    # ① 日曜・祝日（jpholiday／ログイン不要で即判定）
-    closed_reason = clinic_closed_reason(now_jst.date())
-    # ② アポツールのシフト rest-all（お盆・年末年始・臨時休診など祝日でない休診日）
-    #    ※ 2026年お盆は8/10-14で8/10が月曜＝起動日。祝日判定だけでは拾えないため必須。
-    #    ベストエフォート：失敗しても①の結果で続行（アポツール未接続でも祝日は止まる）
-    if not closed_reason:
-        try:
-            closed_reason = asyncio.run(apotool_closed_reason_standalone(now_jst.date()))
-        except Exception as e:
-            print(f"[休診チェック] アポツール休診判定に失敗（続行）: {e}")
-    if closed_reason:
-        print(f"本日は{closed_reason} → 休診日のため配信をスキップします")
-        return
+    # ── 休診日は配信せず、その週の最初の診療日に繰り越す（院長指示 2026-08-12）──
+    # 以前は「休診日ならスキップ」だけだったので、月曜が祝日やお盆に当たった週は
+    # その週の期限アラートが丸ごと消えていた。いまは月曜〜土曜のうち
+    # **その週で最初の診療日**に1回だけ送る（通常の週は従来どおり月曜）。
+    #
+    # 休診日の判定はアポツールの rest-all を書き出した公開カレンダー
+    # （clinic_calendar.py）。お盆・年末年始・臨時休診は祝日ではないので
+    # jpholiday だけでは拾えない。
+    if not FORCE_SEND:
+        reason = closed_reason(now_jst.date())
+        if reason:
+            print(f"本日は{reason} → 休診日のため配信しません"
+                  "（今週の最初の診療日に繰り越します）")
+            return
+        if not is_first_open_day_of_week(now_jst.date()):
+            print("今週はすでに診療日がありました（その日に配信済み）→ 今日は送りません")
+            return
 
     for attempt in range(3):
         try:
