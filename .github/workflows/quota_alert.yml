@@ -1,0 +1,89 @@
+# ==========================================================
+# 【何をする】GitHub Actions 無料枠の警告を院長のLINEワークスDMへ送る（この用途専用）
+# 【いつ動く】cybozu-bot（公開・30分ごと）の見張りステップが「警告が要る」と判断したときだけ
+#
+# 【なぜ専用にして、汎用の通知部品にしないのか】
+#   ワークフローの入力（inputs）は、実行ログの env 一覧にそのまま印字される。
+#   このリポジトリは公開なので、汎用の「好きな文面を送る」入口をここに作ると、
+#   患者氏名や金額を含む通知本文が誰でも読める場所に出てしまう
+#   （2026-08-10に院長判断で lw_notify の公開化を却下済み。2026-08-31に実測でも確認）。
+#   そこでこのワークフローは**数値と警戒レベルだけ**を受け取り、文面はここで組み立てる。
+#   秘密（LW_PRIVATE_KEY等）はSecretsなのでログでは伏せ字になる。
+#
+# 【なぜ公開リポジトリでやるのか】
+#   2026-08-30 14:30に無料枠を使い切って apotool（非公開）の自動化が丸1日止まったとき、
+#   失敗通知Botも消費レポートも同じ非公開リポジトリの中にあったため完全に無音だった。
+#   見張りと、その知らせ役は、止まる側と別の場所に置かないと一緒に黙る。
+#   公開リポジトリのActionsは無料・無制限なので、枠が尽きても動く。
+# ==========================================================
+name: GitHub Actions 無料枠アラート
+
+on:
+  workflow_dispatch:
+    inputs:
+      level:
+        description: '警戒レベル（warn=8割超え／blocked=使い切り）'
+        required: true
+        type: choice
+        options:
+          - warn
+          - blocked
+      used:
+        description: '当月の消費（分）'
+        required: true
+      forecast:
+        description: '月末の着地見込み（分）'
+        required: false
+        default: '0'
+      detail:
+        description: '消費が多いリポジトリ名と分（例: apotool-automation 1774分／youtube-agent 79分）'
+        required: false
+        default: ''
+      reset_month:
+        description: '枠がリセットされる月（数字のみ）'
+        required: false
+        default: ''
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install requests "PyJWT[crypto]"
+
+      - name: 院長DMへ送信
+        env:
+          LW_PRIVATE_KEY:   ${{ secrets.LW_PRIVATE_KEY }}
+          LW_CLIENT_SECRET: ${{ secrets.LW_CLIENT_SECRET }}
+          LEVEL:        ${{ inputs.level }}
+          USED:         ${{ inputs.used }}
+          FORECAST:     ${{ inputs.forecast }}
+          DETAIL:       ${{ inputs.detail }}
+          RESET_MONTH:  ${{ inputs.reset_month }}
+        run: |
+          if [ "$LEVEL" = "blocked" ]; then
+            export NOTIFY_BOT_ID=12789558   # 失敗通知Bot
+            export NOTIFY_MESSAGE="【GitHub Actions 無料枠】🚨 使い切りました。非公開リポジトリの自動化が全部止まっています。
+          当月の消費: ${USED}分 / 2000分
+          内訳: ${DETAIL}
+          止まっているもの: アポツール自動実行・朝のアシスタント・ささっとペイ・GBP投稿ほか（apotool-automation の全部）
+          動いているもの: サイボウズBot・期限アラート（公開リポジトリなので無料無制限）
+          復旧: ${RESET_MONTH}月1日に枠がリセットされれば自動で戻ります（UTC基準のため朝9時ごろ）。
+          ▶ 対処: AIに「Actionsの無料枠が切れた」と伝えてください（消費の削り方まで対応します）"
+          else
+            export NOTIFY_BOT_ID=12786828   # レポートBot
+            export NOTIFY_MESSAGE="【GitHub Actions 無料枠】⚠️ 残りが少なくなっています。
+          当月の消費: ${USED}分 / 2000分
+          このペースの月末見込み: 約 ${FORECAST}分
+          内訳: ${DETAIL}
+          使い切ると非公開リポジトリの自動化が全部・無音で止まります（2026-08-30に実際に起きました）。
+          ▶ 対処: AIに「Actionsの消費を減らして」と伝えてください"
+          fi
+          python lw_notify.py
