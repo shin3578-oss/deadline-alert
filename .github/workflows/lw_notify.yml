@@ -1,0 +1,63 @@
+# ==========================================================
+# 【何をする】LINEワークスへの通知部品（個人DM専用）。
+#            PC内のタスクや他リポジトリから workflow_dispatch で呼ばれて1通送る。
+# 【いつ動く】呼ばれたときだけ
+#
+# 【なぜ apotool ではなく、この公開リポジトリに置くのか】
+#   2026-08-30、GitHub Actions の無料枠（月2,000分）を使い切って
+#   apotool-automation（非公開）の全自動化が丸1日止まった。
+#   非公開リポジトリは実行時間が課金対象で、しかも**ジョブ単位で1分未満も1分に切り上げ**られる。
+#   数秒で終わるこの通知が、2026年8月だけで95回＝95分を食っていた（全消費の約5%）。
+#   公開リポジトリの Actions は無料・無制限なので、通知だけをこちらへ引っ越した。
+#   引っ越し後は何分使っても無料枠を1分も減らさない。
+#
+# 【チャンネル投稿はここではできない】
+#   全体チャンネル・歯科医師チャンネルへの投稿は、チャンネルIDのSecret（LW_DENTAL_CH 等）を
+#   持っている apotool-automation 側の lw_notify.yml を使うこと。
+#   このリポジトリは公開なので、チャンネルIDを持ち込まない方針にしている。
+# ==========================================================
+name: LINEワークス通知（個人DM）
+
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: '送信するメッセージ'
+        required: true
+        default: 'Claude Code が完了しました'
+      bot_id:
+        description: '送信元Bot ID（省略時は既存Bot=要対応。朝のお知らせ=12786821／レポート=12786828／完了通知=12786833／失敗通知=12789558）'
+        required: false
+        default: '12266491'
+      user_id:
+        description: '送信先アカウントID（省略時は院長。スタッフ宛は bot_id を 12266491 のままにすること＝新Bot4つは院長のみ使用可）'
+        required: false
+        default: 'shin@ovalcourtdental'
+      run_url:
+        description: '失敗したrunのログURL（別リポジトリから通知するときに指定。省略するとこの通知自身のrunを指してしまう）'
+        required: false
+        default: ''
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install requests "PyJWT[crypto]"
+
+      - name: LINEワークスへ送信
+        env:
+          LW_PRIVATE_KEY:   ${{ secrets.LW_PRIVATE_KEY }}
+          LW_CLIENT_SECRET: ${{ secrets.LW_CLIENT_SECRET }}
+          NOTIFY_MESSAGE:   ${{ inputs.message }}
+          NOTIFY_BOT_ID:    ${{ inputs.bot_id }}
+          NOTIFY_USER_ID:   ${{ inputs.user_id }}
+          NOTIFY_RUN_URL:   ${{ inputs.run_url }}
+        run: python lw_notify.py
