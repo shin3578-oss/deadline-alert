@@ -3,7 +3,8 @@
 # 【いつ動く】週1回。原則 月曜 8:09（Cron-job.org「期限アラートBot」ジョブが起動）。
 #            月曜が休診（祝日・お盆・年末年始・臨時休診）のときは配信せず、
 #            その週の**最初の診療日**に繰り越して1回だけ送る。
-#            繰り越し用の起動は火〜土 7:30 に apotool の「朝の起動ハブ」から来る
+#            繰り越し用の起動は月〜土 8:30 に apotool の spt_alert.yml のステップから来る
+#            （2026-09-03に朝の起動ハブを廃止。月曜のCron-job.orgジョブもこの枠に振り替えたので、月曜も8:30）
 #            （新しいcronは作らない。Cron-job.orgは12件で満杯のため）。
 #            送るかどうかは main.py が公開の休診日カレンダーを見て自分で決めるので、
 #            起動が重なっても二重送信にはならない。
@@ -15,7 +16,7 @@
 name: やることリスト 期限アラート
 
 on:
-  workflow_dispatch:        # Cron-job.org / 朝の起動ハブ から GitHub API 経由で起動
+  workflow_dispatch:        # apotool の spt_alert.yml（月〜土8:30）から GitHub API 経由で起動
     inputs:
       alert_days:
         description: '何日以内をアラート対象にするか（省略時は7日）'
