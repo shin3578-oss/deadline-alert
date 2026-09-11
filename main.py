@@ -114,7 +114,7 @@ def get_sheet_data():
     service = build("sheets", "v4", http=authorized_http)
 
     # GID からシート名を取得
-    spreadsheet = service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
+    spreadsheet = service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute(num_retries=3)
     sheet_name = None
     for sheet in spreadsheet["sheets"]:
         if sheet["properties"]["sheetId"] == SHEET_GID:
@@ -129,7 +129,7 @@ def get_sheet_data():
     result = service.spreadsheets().values().get(
         spreadsheetId=SPREADSHEET_ID,
         range=f"{sheet_name}!A:K"
-    ).execute()
+    ).execute(num_retries=3)
     return result.get("values", [])
 
 
