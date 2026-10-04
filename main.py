@@ -24,7 +24,7 @@ ALERT_DAYS     = int(os.environ.get("ALERT_DAYS", "7"))
 
 GOOGLE_CREDS       = os.environ["GOOGLE_CREDENTIALS_JSON"]
 LW_CLIENT_ID       = "0cAEPO2Yzau80tSsEhxV"
-LW_CLIENT_SECRET   = "d7WfxxO2t1"
+LW_CLIENT_SECRET   = os.environ.get("LW_CLIENT_SECRET", "")   # 2026-09-23: 公開リポジトリに直書きされていた
 LW_SERVICE_ACCOUNT = "3w266.serviceaccount@ovalcourtdental"
 LW_BOT_ID          = "12266491"
 LW_PRIVATE_KEY     = os.environ.get("LW_PRIVATE_KEY", "")

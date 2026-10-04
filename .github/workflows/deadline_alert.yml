@@ -50,6 +50,7 @@ jobs:
       - name: 期限アラートを実行
         env:
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+          LW_CLIENT_SECRET:        ${{ secrets.LW_CLIENT_SECRET }}
           LW_PRIVATE_KEY:          ${{ secrets.LW_PRIVATE_KEY }}
           LW_TARGET:               ${{ secrets.LW_TARGET }}
           LW_TARGET_TYPE:          ${{ secrets.LW_TARGET_TYPE }}
@@ -57,3 +58,14 @@ jobs:
           DRY_RUN:                 ${{ github.event.inputs.dry_run || 'false' }}
           FORCE_SEND:              ${{ github.event.inputs.force_send || 'false' }}
         run: python main.py
+
+      - name: 失敗をLINEワークスに通知
+        if: failure()
+        env:
+          LW_PRIVATE_KEY:   ${{ secrets.LW_PRIVATE_KEY }}
+          LW_CLIENT_SECRET: ${{ secrets.LW_CLIENT_SECRET }}
+          NOTIFY_MESSAGE:   "❌ 期限アラートBot 失敗 — 今週の未完了タスク通知が出ていない可能性があります。GitHub Actions のログを確認してください"
+          NOTIFY_BOT_ID: "12789558"  # 失敗通知Bot
+        run: |
+          pip install requests "PyJWT[crypto]"
+          python lw_notify.py
