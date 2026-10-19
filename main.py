@@ -5,7 +5,7 @@
 期限が近いタスク（期限切れ含む）をLINEワークスに通知
 """
 
-import json, os, time, random
+import json, os, time, random, unicodedata
 import httplib2
 import jwt as pyjwt
 import requests
@@ -34,6 +34,10 @@ LW_TARGET_TYPE = os.environ.get("LW_TARGET_TYPE", "user")  # "user" or "channel"
 DRY_RUN        = os.environ.get("DRY_RUN", "false").lower() == "true"
 # 週1回の縛り（今週の最初の診療日だけ送る）を外して今すぐ送る＝手動確認用
 FORCE_SEND     = os.environ.get("FORCE_SEND", "false").lower() == "true"
+# 進捗確認モード（2026-10-19〜）: off=従来どおり全員分を1通でチャンネルへ ／
+#   test=全員分のDMを院長だけに送る（シートは書き換えない）／ live=担当者ごとにDMで聞く
+PROGRESS_MODE  = os.environ.get("PROGRESS_MODE", "off").lower()
+OWNER_ID       = "shin@ovalcourtdental"   # 院長（まとめの送り先）
 
 
 # ========================
@@ -80,14 +84,20 @@ def split_message(message, limit=1900):
     return chunks
 
 
-def send_to_lineworks(message):
-    access_token = get_lw_access_token()
-    headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+_LW_TOKEN = None
 
-    if LW_TARGET_TYPE == "user":
-        url = f"https://www.worksapis.com/v1.0/bots/{LW_BOT_ID}/users/{LW_TARGET}/messages"
+def send_to_lineworks(message, target=None, target_type=None):
+    global _LW_TOKEN
+    target = target or LW_TARGET
+    target_type = target_type or LW_TARGET_TYPE
+    if _LW_TOKEN is None:
+        _LW_TOKEN = get_lw_access_token()
+    headers = {"Authorization": f"Bearer {_LW_TOKEN}", "Content-Type": "application/json"}
+
+    if target_type == "user":
+        url = f"https://www.worksapis.com/v1.0/bots/{LW_BOT_ID}/users/{target}/messages"
     else:
-        url = f"https://www.worksapis.com/v1.0/bots/{LW_BOT_ID}/channels/{LW_TARGET}/messages"
+        url = f"https://www.worksapis.com/v1.0/bots/{LW_BOT_ID}/channels/{target}/messages"
 
     chunks = split_message(message)
     print(f"送信分割数: {len(chunks)}通")
@@ -96,7 +106,7 @@ def send_to_lineworks(message):
                           json={"content": {"type": "text", "text": chunk}},
                           timeout=30)
         r.raise_for_status()
-        print(f"LINE WORKS送信完了 ({i}/{len(chunks)}) → {LW_TARGET_TYPE}:{LW_TARGET}")
+        print(f"LINE WORKS送信完了 ({i}/{len(chunks)}) → {target_type}:{target}")
         if len(chunks) > 1:
             time.sleep(1)  # 連続送信の間隔
 
@@ -105,10 +115,11 @@ def send_to_lineworks(message):
 # Google Sheets 読み取り
 # ========================
 
-def get_sheet_data():
+def open_sheet(write=False):
+    """(service, シート名) を返す。write=True のときだけ書き込み権限を取る"""
+    scope = "https://www.googleapis.com/auth/spreadsheets" if write         else "https://www.googleapis.com/auth/spreadsheets.readonly"
     creds = service_account.Credentials.from_service_account_info(
-        json.loads(GOOGLE_CREDS),
-        scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
+        json.loads(GOOGLE_CREDS), scopes=[scope]
     )
     authorized_http = AuthorizedHttp(creds, http=httplib2.Http(timeout=30))
     service = build("sheets", "v4", http=authorized_http)
@@ -125,12 +136,16 @@ def get_sheet_data():
         raise ValueError(f"シートGID {SHEET_GID} が見つかりません")
 
     print(f"シート名: {sheet_name}")
+    return service, sheet_name
 
+
+def get_sheet_data(write=False):
+    service, sheet_name = open_sheet(write)
     result = service.spreadsheets().values().get(
         spreadsheetId=SPREADSHEET_ID,
-        range=f"{sheet_name}!A:K"
+        range=f"{sheet_name}!A:M"
     ).execute(num_retries=3)
-    return result.get("values", [])
+    return result.get("values", []), service, sheet_name
 
 
 # ========================
@@ -257,6 +272,239 @@ def build_message(alerts):
 
 
 # ========================
+# 進捗確認（担当者ごとに個別DMで聞く）
+# ========================
+# 回答欄は依頼リストの J〜M 列。J=進捗（終わった／終わっていない） K=終わる見込み
+# L=単発／ルーティン M=詰まり・質問。担当者の宛先は同じスプレッドシートの「担当者名簿」タブ
+# （コードに人の名前とIDを書かない＝公開リポジトリのため／異動の度に直さないため）。
+ANS_COLS = (9, 10, 11, 12)          # J〜M の列番号（0始まり）
+
+
+def has_answer(t):
+    """毎週空にするのは J・K・M。L（単発／ルーティン）は仕事の性質なので残す"""
+    return bool(t["ans"][0] or t["ans"][1] or t["ans"][3])
+
+ROSTER_TAB  = "担当者名簿"
+HISTORY_TAB = "回答履歴"
+
+
+def norm(name):
+    """名字の表記ゆれ（全角半角・空白）をそろえる"""
+    return unicodedata.normalize("NFKC", name or "").replace(" ", "").strip()
+
+
+def load_roster(service):
+    r = service.spreadsheets().values().get(
+        spreadsheetId=SPREADSHEET_ID, range=f"{ROSTER_TAB}!A2:D200"
+    ).execute(num_retries=3)
+    roster = {}
+    for row in r.get("values", []):
+        if len(row) >= 3 and row[0].strip() and row[2].strip():
+            key = norm(row[0])
+            if key in roster:
+                raise ValueError(f"「{ROSTER_TAB}」に同じ担当者名が2行あります: {key}")
+            call = row[3].strip() if len(row) > 3 and row[3].strip() else f"{key}さん"
+            roster[key] = {"name": row[1].strip(), "id": row[2].strip(), "call": call}
+    if not roster:
+        raise ValueError(f"シート「{ROSTER_TAB}」から宛先が1件も読めません")
+    return roster
+
+
+def parse_rows(rows):
+    """全行を {row, task, assignee, deadline, days_left, status, ans} にする。row は実際の行番号"""
+    today = datetime.now(JST).date()
+    out = []
+    for i, row in enumerate(rows):
+        if i == 0 or not row or not row[0].strip():
+            continue
+        row = list(row) + [""] * (13 - len(row))
+        dl = parse_deadline(row[4]) if row[4].strip() else None
+        out.append({
+            "row": i + 1,
+            "task": row[0].strip(),
+            "assignee": norm(row[2]),
+            "deadline_str": row[4].strip(),
+            "deadline": dl,
+            "days_left": (dl - today).days if dl else None,
+            "status": row[5].strip(),
+            "ans": [row[c].strip() for c in ANS_COLS],
+        })
+    return out
+
+
+def is_open(t):
+    return t["status"] not in ("完了", "ブロック済み")
+
+
+def deadline_label(t):
+    if t["deadline"] is None:
+        if t["deadline_str"]:
+            return f"期限『{t['deadline_str']}』が読み取れません"
+        return "期限なし"
+    d = t["deadline"].strftime("%Y/%m/%d")
+    n = t["days_left"]
+    if n < 0:
+        return f"期限 {d}（🔴 {abs(n)}日超過）"
+    if n == 0:
+        return f"期限 {d}（⚠️ 今日）"
+    return f"期限 {d}（あと{n}日）"
+
+
+def build_ask_message(call, tasks):
+    first_row = tasks[0]["row"]
+    lines = [f"{call}、小林からのタスク依頼の進捗を教えてください（{len(tasks)}件）", ""]
+    for n, t in enumerate(tasks, 1):
+        lines.append(f"{n}. 【{t['row']}行目】{t['task']}")
+        lines.append(f"　{deadline_label(t)}")
+    lines += [
+        "",
+        "▼ 下のシートを開き、上の行番号の行の J〜M 列に入力してください（J・L はプルダウン）",
+        "J 進捗：終わった／終わっていない",
+        "K 終わっていない場合、いつ頃終わりそうか（例：10/31、来週中）",
+        "L 単発の依頼か、ルーティン（ずっと続ける仕事）にするか",
+        "M 詰まっていること・質問（なければ空欄でOK）",
+        f"{SHEET_URL.split('#')[0]}#gid={SHEET_GID}&range=J{first_row}",
+        "",
+        "分からないことは事務スタッフに聞いてください。",
+    ]
+    return "\n".join(lines)
+
+
+def build_owner_digest(parsed, open_asked, no_owner, failed):
+    """院長宛: 前回の回答のまとめ。open_asked＝いま聞く対象（未回答の数え方に使う）"""
+    today = datetime.now(JST).strftime("%Y/%m/%d")
+    answered = [t for t in parsed if has_answer(t)]
+    lines = [f"タスク依頼 進捗の回答まとめ（{today}）"]
+    if not answered:
+        lines.append("前回の回答は1件もありません。")
+    else:
+        stuck = [t for t in answered if t["ans"][3]]
+        done = [t for t in answered if t["ans"][0] == "終わった"]
+        going = [t for t in answered if t["ans"][0] != "終わった"]
+        lines.append(f"回答あり {len(answered)}件")
+        if stuck:
+            lines.append("\n💬 詰まり・質問")
+            for t in stuck:
+                lines.append(f"・{t['assignee']}｜{t['task']}（{t['row']}行目）")
+                lines.append(f"　→ {t['ans'][3]}")
+        if done:
+            lines.append("\n✅ 「終わった」と回答（ステータスを完了にしてよいか確認）")
+            for t in done:
+                lines.append(f"・{t['assignee']}｜{t['task']}（{t['row']}行目・いまのステータス：{t['status'] or '空欄'}）")
+        if going:
+            lines.append("\n⏳ 終わっていない／途中")
+            for t in going:
+                bits = []
+                if t["ans"][0]:
+                    bits.append(t["ans"][0])
+                if t["ans"][1]:
+                    bits.append(f"見込み：{t['ans'][1]}")
+                if t["ans"][2]:
+                    bits.append(t["ans"][2])
+                lines.append(f"・{t['assignee']}｜{t['task']}（{t['row']}行目）")
+                if bits:
+                    lines.append("　" + "／".join(bits))
+    # 未回答（いま未完了で、回答欄が空の件数を担当者別に）
+    blank = {}
+    for t in open_asked:
+        if not t["ans"][0]:
+            blank[t["assignee"]] = blank.get(t["assignee"], 0) + 1
+    if answered and blank:
+        lines.append("\n❓ 未回答（件数）")
+        for a, n in sorted(blank.items(), key=lambda x: -x[1]):
+            lines.append(f"・{a}：{n}件")
+    if no_owner:
+        lines.append("\n⚠️ 担当が空欄、または名簿にない担当者の未完了（担当を決めてください）")
+        for t in no_owner:
+            who = t["assignee"] or "担当空欄"
+            lines.append(f"・{who}｜{t['task']}（{t['row']}行目）")
+    if failed:
+        lines.append("\n🔴 DMを送れなかった担当者: " + "、".join(failed))
+    lines.append(f"\n{SHEET_URL}")
+    return "\n".join(lines)
+
+
+def archive_and_clear(service, sheet_name, answered, digest):
+    """前回の回答を「回答履歴」に控え → 院長にまとめを送り → 回答欄を空にする。
+    控えと院長まとめが済むまで消さない（消した後で落ちて、まとめが二度と出ない事故を防ぐ）"""
+    today = datetime.now(JST).strftime("%Y/%m/%d")
+    if not answered:
+        send_to_lineworks(digest, OWNER_ID, "user")
+        return
+    values = [[today, t["assignee"], t["row"], t["task"], *t["ans"]] for t in answered]
+    service.spreadsheets().values().append(
+        spreadsheetId=SPREADSHEET_ID, range=f"{HISTORY_TAB}!A:H",
+        valueInputOption="RAW", insertDataOption="INSERT_ROWS", body={"values": values}
+    ).execute(num_retries=3)
+    print(f"回答履歴に控えました: {len(values)}件")
+    send_to_lineworks(digest, OWNER_ID, "user")
+    service.spreadsheets().values().batchClear(
+        spreadsheetId=SPREADSHEET_ID,
+        body={"ranges": [f"{sheet_name}!{c}{t['row']}" for t in answered for c in ("J", "K", "M")]}
+    ).execute(num_retries=3)
+    print("回答欄（J・K・M）を空にしました")
+
+
+def run_progress_flow():
+    live = PROGRESS_MODE == "live"
+    print(f"進捗確認モード: {PROGRESS_MODE}")
+    rows, service, sheet_name = get_sheet_data(write=live)
+    print(f"取得行数: {len(rows)}")
+    roster = load_roster(service)
+    parsed = parse_rows(rows)
+
+    open_tasks = [t for t in parsed if is_open(t)]
+    asked, no_owner = {}, []
+    for t in open_tasks:
+        if t["assignee"] in roster:
+            asked.setdefault(t["assignee"], []).append(t)
+        else:
+            no_owner.append(t)
+    answered = [t for t in parsed if has_answer(t)]
+    print(f"未完了 {len(open_tasks)}件 ／ 聞く相手 {len(asked)}人 ／ 担当不明 {len(no_owner)}件 ／ 前回の回答 {len(answered)}件")
+
+    open_asked = [t for v in asked.values() for t in v]
+    asks = {s: build_ask_message(roster[s]["call"], ts) for s, ts in asked.items()}
+
+    if DRY_RUN:
+        # 公開リポジトリのログは誰でも読めるため、文面・タスク名は出さず件数だけにする
+        print(f"[DRY_RUN] 質問DM {len(asks)}人分／院長まとめ1通。送信とシート更新をスキップしました")
+        return
+
+    today = datetime.now(JST).strftime("%Y/%m/%d")
+    if live:
+        last = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID, range=f"{HISTORY_TAB}!J1").execute(num_retries=3)
+        if (last.get("values") or [[""]])[0][0] == today and not FORCE_SEND:
+            print("本日すでに実行済み（二重に聞かないため終了）。やり直すときは force_send=true")
+            return
+        archive_and_clear(service, sheet_name, answered,
+                          digest=build_owner_digest(parsed, open_asked, no_owner, []))
+        service.spreadsheets().values().update(
+            spreadsheetId=SPREADSHEET_ID, range=f"{HISTORY_TAB}!J1", valueInputOption="RAW",
+            body={"values": [[today]]}).execute(num_retries=3)
+
+    failed = []
+    for s, m in asks.items():
+        try:
+            if live:
+                send_to_lineworks(m, roster[s]["id"], "user")
+            else:
+                send_to_lineworks(f"【テスト送信・本来の宛先：{roster[s]['name']}】\n{m}", OWNER_ID, "user")
+        except Exception as e:
+            print(f"送信失敗 {s}: {e}")
+            failed.append(s)
+        time.sleep(1)
+
+    if PROGRESS_MODE == "test":
+        send_to_lineworks("【テスト送信】\n" + build_owner_digest(parsed, open_asked, no_owner, failed), OWNER_ID, "user")
+    elif failed:
+        send_to_lineworks("🔴 進捗確認のDMを送れなかった担当者: " + "、".join(failed), OWNER_ID, "user")
+    if failed:
+        raise RuntimeError(f"DMを送れなかった担当者: {failed}")
+
+
+# ========================
 # Main
 # ========================
 
@@ -282,9 +530,13 @@ def main():
             print("今週はすでに診療日がありました（その日に配信済み）→ 今日は送りません")
             return
 
+    if PROGRESS_MODE in ("test", "live"):
+        run_progress_flow()
+        return
+
     for attempt in range(3):
         try:
-            rows = get_sheet_data()
+            rows, _service, _sheet_name = get_sheet_data()
             break
         except Exception as e:
             print(f"スプレッドシート取得失敗 ({attempt+1}/3): {e}")

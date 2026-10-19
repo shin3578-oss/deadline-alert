@@ -1,5 +1,6 @@
 # ==========================================================
-# 【何をする】やることリストの期限が近い項目をLINEワークスに通知
+# 【何をする】やることリストの未完了を、担当者ごとに個別DMで聞く（進捗確認）。院長には前回の回答のまとめをDM
+#            ※進捗確認モード(progress_mode)が off のあいだは従来どおり全員分を1通でチャンネルへ（2026-10-19〜切替中）
 # 【いつ動く】週1回。原則 月曜 8:09（Cron-job.org「期限アラートBot」ジョブが起動）。
 #            月曜が休診（祝日・お盆・年末年始・臨時休診）のときは配信せず、
 #            その週の**最初の診療日**に繰り越して1回だけ送る。
@@ -30,6 +31,10 @@ on:
         description: 'trueにすると「今週の最初の診療日だけ送る」の縛りを外して今すぐ送る（手動確認用）'
         required: false
         default: 'false'
+      progress_mode:
+        description: '進捗確認モード（off=従来の全員分1通／test=担当者別DMを院長だけに送る／live=担当者ごとにDMで聞く）。定期起動のときの既定は下の env で決まる'
+        required: false
+        default: 'off'
 
 jobs:
   run-alert:
@@ -57,6 +62,7 @@ jobs:
           ALERT_DAYS:              ${{ github.event.inputs.alert_days || '3' }}
           DRY_RUN:                 ${{ github.event.inputs.dry_run || 'false' }}
           FORCE_SEND:              ${{ github.event.inputs.force_send || 'false' }}
+          PROGRESS_MODE:           ${{ github.event.inputs.progress_mode || 'off' }}
         run: python main.py
 
       - name: 失敗をLINEワークスに通知
