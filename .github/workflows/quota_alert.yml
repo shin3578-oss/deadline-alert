@@ -28,6 +28,7 @@ on:
         options:
           - warn
           - blocked
+          - mismatch
       used:
         description: '当月の消費（分）'
         required: true
@@ -41,6 +42,10 @@ on:
         default: ''
       reset_month:
         description: '枠がリセットされる月（数字のみ）'
+        required: false
+        default: ''
+      official:
+        description: 'GitHubの正式な使用量（分）。-1＝読めなかった（mismatch のときだけ使う）'
         required: false
         default: ''
 
@@ -67,6 +72,7 @@ jobs:
           FORECAST:     ${{ inputs.forecast }}
           DETAIL:       ${{ inputs.detail }}
           RESET_MONTH:  ${{ inputs.reset_month }}
+          OFFICIAL:     ${{ inputs.official }}
         run: |
           if [ "$LEVEL" = "blocked" ]; then
             export NOTIFY_BOT_ID=12789558   # 失敗通知Bot
@@ -77,6 +83,21 @@ jobs:
           動いているもの: 公開リポジトリのもの（サイボウズBot・期限アラート・GBP空き枠投稿・面談記録シートBot）は無料無制限で動き続けます
           復旧: ${RESET_MONTH}月1日に枠がリセットされれば自動で戻ります（UTC基準のため朝9時ごろ）。
           ▶ 対処: AIに「Actionsの無料枠が切れた」と伝えてください（消費の削り方まで対応します）"
+          elif [ "$LEVEL" = "mismatch" ]; then
+            # 2026-11-03〜 見張りの数え方が GitHub の正式な数字とずれた／正式な数字が読めなかった
+            export NOTIFY_BOT_ID=12789558   # 失敗通知Bot
+            if [ "$OFFICIAL" = "-1" ]; then
+              export NOTIFY_MESSAGE="【GitHub Actions 無料枠】🔧 GitHubの正式な使用量が読めませんでした。
+          見張りが数えた当月の消費: ${USED}分（こちらは読めています）
+          正式な数字と見比べられないので、見張りの数え間違いに気づけない状態です。
+          ▶ 対処: AIに「Actionsの使用量の鍵を見て」と伝えてください（鍵の期限切れの疑い）"
+            else
+              export NOTIFY_MESSAGE="【GitHub Actions 無料枠】🔧 見張りの数え方がGitHubの正式な数字とずれています。
+          GitHubの正式な数字: ${OFFICIAL}分
+          見張りが数えた数字: ${USED}分
+          警告の判断は正式な数字で行っています。見張りの数え方が実態とずれた疑いがあります（11/3の誤警告と同じ型）。
+          ▶ 対処: AIに「Actionsの見張りの数字がずれている」と伝えてください"
+            fi
           else
             export NOTIFY_BOT_ID=12786828   # レポートBot
             export NOTIFY_MESSAGE="【GitHub Actions 無料枠】⚠️ 残りが少なくなっています。
