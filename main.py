@@ -553,7 +553,8 @@ def main():
         return
 
     message = build_message(alerts)
-    print(f"送信メッセージ:\n{message}")
+    # 本文は出さない（公開リポジトリの実行ログは誰でも見られ、患者名が載るため・2026-11-20）
+    print(f"送信メッセージ: {len(message)}文字（本文はログに出さない）")
 
     if DRY_RUN:
         print("[DRY_RUN] LINEワークス送信をスキップしました")
